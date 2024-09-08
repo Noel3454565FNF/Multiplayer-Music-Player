@@ -6,14 +6,21 @@ using Mirror;
 using System.Collections;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using System.Linq;
+using Unity.VisualScripting;
 
 public class MusicPlayer : NetworkBehaviour
 {
     public List<string> mp3Files = new List<string>();
     public string selectedDirectory = null;
+    public int currentmusic = 0;
+    public int clientslistening = 0;
+    public string Playing = null;
 
     public AudioSource mp3AudioSource;
     private OnlineGM OGM;
+    private NetworkManager NM;
+    private Server serv;
 
     public Button NextB;
     public Button PrevB;
@@ -22,12 +29,15 @@ public class MusicPlayer : NetworkBehaviour
 
     private void Start()
     {
-        if (gameObject.GetComponent<OnlineGM>() != null)
+        if (gameObject.GetComponent<OnlineGM>() != null && gameObject.GetComponent<NetworkManager>() != null)
         {
             OGM = gameObject.GetComponent<OnlineGM>();
+            NM = gameObject.GetComponent<NetworkManager>();
+            serv = gameObject.GetComponent<Server>();
             mp3AudioSource = gameObject.GetComponent<AudioSource>();
             setup();
         }
+        NextB.onClick.AddListener(delegate{ GetNextMusic(1); });
     }
 
     public void setup()
@@ -57,7 +67,8 @@ public class MusicPlayer : NetworkBehaviour
                 // Start playing the first MP3 file as an example
                 if (mp3Files.Count > 0)
                 {
-                    StartCoroutine(LoadAndPlayMp3(mp3Files[0]));
+                    StartCoroutine(LoadAndPlayMp3(mp3Files[currentmusic]));
+                    serv.updatefilepath(selectedDirectory);
                     SetupIsDone();
                 }
             }
@@ -85,6 +96,24 @@ public class MusicPlayer : NetworkBehaviour
         Pause.enabled = true;
         MusicImage.enabled = true;
     }
+
+    public void GetNextMusic(int newm)
+    {
+        int test = currentmusic + newm;
+        if (test > 0 || test < mp3Files.Count)
+        {
+            StartCoroutine(LoadAndPlayMp3(mp3Files[currentmusic] + newm));
+        }
+        if (test < 0)
+        {
+            StartCoroutine(LoadAndPlayMp3(mp3Files[mp3Files.Count]));
+        }
+        if (test > mp3Files.Count)
+        {
+            StartCoroutine(LoadAndPlayMp3(mp3Files[0]));
+        }
+    }
+
 
     IEnumerator LoadAndPlayMp3(string path)
     {
@@ -117,9 +146,35 @@ public class MusicPlayer : NetworkBehaviour
                 // Get the audio clip and assign it to the AudioSource
                 AudioClip audioClip = DownloadHandlerAudioClip.GetContent(www);
                 mp3AudioSource.clip = audioClip;
-                mp3AudioSource.Play(); // Play the audio
-                Debug.Log("Playing: " + fullPath);
+                checkClient();
+                //mp3AudioSource.Play(); // Play the audio
+                //Debug.Log("Playing: " + fullPath);
+                Playing = fullPath;
             }
+        }
+    }
+
+
+    
+    public void checkClient()
+    {
+        if (NM.numPlayers == 0)
+        {
+            mp3AudioSource.Play(); // Play the audio
+        }
+        else if (NM.numPlayers < 0)
+        {
+            clientslistening = NM.numPlayers;
+            checkmusicexist();
+        }
+    }
+
+    [ClientRpc]
+    public void checkmusicexist()
+    {
+        if (isClient)
+        {
+
         }
     }
 }
