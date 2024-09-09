@@ -6,8 +6,8 @@ using Mirror;
 using System.Collections;
 using UnityEngine.Networking;
 using UnityEngine.UI;
-using System.Linq;
-using Unity.VisualScripting;
+using System.Net.NetworkInformation;
+using TagLib;
 
 public class MusicPlayer : NetworkBehaviour
 {
@@ -16,28 +16,89 @@ public class MusicPlayer : NetworkBehaviour
     public int currentmusic = 0;
     public int clientslistening = 0;
     public string Playing = null;
+    public bool canPause;
 
     public AudioSource mp3AudioSource;
     private OnlineGM OGM;
-    private NetworkManager NM;
-    private Server serv;
+    public NetworkManager NM;
+    public Server serv;
 
     public Button NextB;
     public Button PrevB;
     public Button Pause;
     public Image MusicImage;
+    public Sprite DefaultSprite;
+
+    public string PlayerMode = "null";
+
+
 
     private void Start()
     {
-        if (gameObject.GetComponent<OnlineGM>() != null && gameObject.GetComponent<NetworkManager>() != null)
+        PlayerMode = "null";
+        print(PlayerMode);
+        if (GetComponent<OnlineGM>() != null)
         {
-            OGM = gameObject.GetComponent<OnlineGM>();
-            NM = gameObject.GetComponent<NetworkManager>();
-            serv = gameObject.GetComponent<Server>();
-            mp3AudioSource = gameObject.GetComponent<AudioSource>();
-            setup();
+            OGM = GetComponent<OnlineGM>();
+            serv = GetComponent<Server>();
+            mp3AudioSource = GetComponent<AudioSource>();
+            NM = GameObject.Find("GameManager").gameObject.GetComponent<NetworkManager>();
+            NextB = GameObject.Find("Next").gameObject.GetComponent<Button>();
+            PrevB = GameObject.Find("Prev").gameObject.GetComponent<Button>();
+            Pause = GameObject.Find("Pause").gameObject.GetComponent<Button>();
+            MusicImage = GameObject.Find("Image").gameObject.GetComponent<Image>();
+
         }
-        NextB.onClick.AddListener(delegate{ GetNextMusic(1); });
+
+        // Safely adding listeners
+        if (NextB != null)
+        {
+            NextB.onClick.AddListener(() => GetNextMusic(1));
+        }
+        if (PrevB != null)
+        {
+            PrevB.onClick.AddListener(() => GetNextMusic(-1));
+        }
+        if (Pause != null)
+        {
+            Pause.onClick.AddListener(TogglePause);
+        }
+
+        if (isServer && isClient && PlayerMode == "null")
+        {
+            print("server setup");
+            setup();
+            PlayerMode = "Server";
+            canPause = true;
+        }
+
+        if (isClient && PlayerMode == "null")
+        {
+            print("You are now in Client Mode");
+            PlayerMode = "Client";
+            canPause = false;
+            Pause.GetComponentInChildren<Text>().text = "balai dans ton cul";
+            returnmypath();
+        }
+        
+        if (isLocalPlayer == false)
+        {
+            this.gameObject.SetActive(false);
+        }
+    }
+
+
+
+    [Mirror.Command]
+    public void returnmypath()
+    {
+        callbackformypath(serv.altPath + mp3Files[currentmusic]);
+    }
+
+    [ClientRpc]
+    public void callbackformypath(string path)
+    {
+        StartCoroutine(LoadAndPlayMp3(path));
     }
 
     public void setup()
@@ -49,27 +110,21 @@ public class MusicPlayer : NetworkBehaviour
             selectedDirectory = paths[0];
             Debug.Log("Selected Directory: " + selectedDirectory);
 
-            // Check if the directory exists
             if (Directory.Exists(selectedDirectory))
             {
                 // Fetch all mp3 files
                 string[] files = Directory.GetFiles(selectedDirectory, "*.mp3");
+                mp3Files.Clear();
+                mp3Files.AddRange(files);
 
-                // Add each file path to the list
-                foreach (string file in files)
-                {
-                    // Replace backslashes with forward slashes
-                    string formattedFile = file.Replace("\\", "/");
-                    mp3Files.Add(formattedFile);
-                    Debug.Log("Found MP3: " + formattedFile);
-                }
+                Debug.Log($"Found {mp3Files.Count} MP3 files.");
 
-                // Start playing the first MP3 file as an example
                 if (mp3Files.Count > 0)
                 {
                     StartCoroutine(LoadAndPlayMp3(mp3Files[currentmusic]));
                     serv.updatefilepath(selectedDirectory);
                     SetupIsDone();
+                    print(mp3Files[currentmusic]);
                 }
             }
             else
@@ -83,56 +138,69 @@ public class MusicPlayer : NetworkBehaviour
         }
     }
 
-    // Example method to get all mp3 files
-    public List<string> GetMp3Files()
-    {
-        return mp3Files;
-    }
-
     public void SetupIsDone()
     {
-        NextB.enabled = true;
-        PrevB.enabled = true;
-        Pause.enabled = true;
-        MusicImage.enabled = true;
+        /*        if (NextB != null) NextB.enabled = true;
+                if (PrevB != null) PrevB.enabled = true;
+                if (Pause != null) Pause.enabled = true;
+                if (MusicImage != null) MusicImage.enabled = true;
+        */
     }
 
+    [ClientRpc]
     public void GetNextMusic(int newm)
     {
-        int test = currentmusic + newm;
-        if (test > 0 || test < mp3Files.Count)
+        currentmusic += newm;
+
+        if (currentmusic < 0)
         {
-            StartCoroutine(LoadAndPlayMp3(mp3Files[currentmusic] + newm));
+            currentmusic = mp3Files.Count - 1;
         }
-        if (test < 0)
+        else if (currentmusic >= mp3Files.Count)
         {
-            StartCoroutine(LoadAndPlayMp3(mp3Files[mp3Files.Count]));
+            currentmusic = 0;
         }
-        if (test > mp3Files.Count)
+
+        StartCoroutine(LoadAndPlayMp3(mp3Files[currentmusic]));
+    }
+
+    public void TogglePause()
+    {
+        if (mp3AudioSource.isPlaying)
         {
-            StartCoroutine(LoadAndPlayMp3(mp3Files[0]));
+            mp3AudioSource.Pause();
+            TogglePauseClient(true);
+        }
+        else
+        {
+            mp3AudioSource.UnPause();
+            TogglePauseClient(false);
         }
     }
 
+    [ClientRpc]
+    public void TogglePauseClient(bool pause)
+    {
+        if (canPause)
+        {
+            if (pause)
+            {
+                mp3AudioSource.Pause();
+            }
+            else
+            {
+                mp3AudioSource.UnPause();
+            }
+            print("yelo");
+        }
+    }
 
     IEnumerator LoadAndPlayMp3(string path)
     {
-        // Prepare the full path for different platforms
-        string fullPath = "";
-
-#if UNITY_ANDROID
-        fullPath = "file://" + path;  // For Android
-#elif UNITY_IOS
-        fullPath = "file://" + path;  // For iOS
-#elif UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        fullPath = "file:///" + path; // On Windows
-#elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
-        fullPath = "file://" + path;  // For macOS
-#endif
+        string fullPath = PathForPlatform(path);
 
         Debug.Log("Loading file from: " + fullPath);
 
-        // Use UnityWebRequest to load the mp3 from the file system
         using (UnityWebRequest www = UnityWebRequestMultimedia.GetAudioClip(fullPath, AudioType.MPEG))
         {
             yield return www.SendWebRequest();
@@ -143,38 +211,130 @@ public class MusicPlayer : NetworkBehaviour
             }
             else
             {
-                // Get the audio clip and assign it to the AudioSource
                 AudioClip audioClip = DownloadHandlerAudioClip.GetContent(www);
                 mp3AudioSource.clip = audioClip;
-                checkClient();
-                //mp3AudioSource.Play(); // Play the audio
-                //Debug.Log("Playing: " + fullPath);
-                Playing = fullPath;
+                checkClient(fullPath);
+                LoadCoverArtWindows(fullPath);
+            }
+        }
+    }
+
+    string PathForPlatform(string path)
+    {
+        string fullPath = "";
+
+#if UNITY_ANDROID
+        fullPath = "file://" + path;
+#elif UNITY_IOS
+        fullPath = "file://" + path;
+#elif UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        fullPath = "file:///" + path;
+#elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+        fullPath = "file://" + path;
+#endif
+
+        return fullPath;
+    }
+
+    public void checkClient(string path)
+    {
+        if (NM.numPlayers <= 1)
+        {
+            mp3AudioSource.Play();
+        }
+        else
+        {
+            clientslistening = NM.numPlayers;
+            remoteMusicPlaying(path);
+            print("1AA");
+        }
+    }
+
+    [ClientRpc]
+    public void remoteMusicPlaying(string path)
+    {
+        if (isClient)
+        {
+            StartCoroutine(courmusicthing(path));
+            print("IS CLINET");
+        }
+        if (isServer)
+        {
+            mp3AudioSource.Play();
+        }
+    }
+
+    IEnumerator courmusicthing(string fullpath)
+    {
+        using (UnityWebRequest www = UnityWebRequestMultimedia.GetAudioClip(fullpath, AudioType.MPEG))
+        {
+            yield return www.SendWebRequest();
+
+            if (www.result == UnityWebRequest.Result.ConnectionError || www.result == UnityWebRequest.Result.ProtocolError)
+            {
+                Debug.LogError("Attempting secondary method...");
+                UnityWebRequest www2 = UnityWebRequestMultimedia.GetAudioClip(serv.altPath + mp3Files[currentmusic], AudioType.MPEG);
+                AudioClip audioClip = DownloadHandlerAudioClip.GetContent(www2);
+                mp3AudioSource.clip = audioClip;
+                mp3AudioSource.Play();
+                Playing = serv.altPath + mp3Files[currentmusic];
+                print(Playing);
+                print("ONLINE LOAD");
+            }
+            else
+            {
+                AudioClip audioClip = DownloadHandlerAudioClip.GetContent(www);
+                mp3AudioSource.clip = audioClip;
+                mp3AudioSource.Play();
+                Playing = fullpath;
+                print("NORMAL LOAD");
             }
         }
     }
 
 
-    
-    public void checkClient()
-    {
-        if (NM.numPlayers == 0)
-        {
-            mp3AudioSource.Play(); // Play the audio
-        }
-        else if (NM.numPlayers < 0)
-        {
-            clientslistening = NM.numPlayers;
-            checkmusicexist();
-        }
-    }
-
     [ClientRpc]
-    public void checkmusicexist()
+    public void LoadmusicClientSide()
     {
-        if (isClient)
-        {
 
+    }
+
+    IEnumerator LoadMusicClientSideCour()
+    {
+        yield return null;
+    }
+
+
+#if UNITY_STANDALONE || UNITY_EDITOR
+    void LoadCoverArtWindows(string filePath)
+    {
+        try
+        {
+            print(mp3Files[currentmusic]);
+            print(filePath);
+            var file = TagLib.File.Create(mp3Files[currentmusic]);
+            var coverArt = file.Tag.Pictures;
+
+            if (coverArt.Length > 0)
+            {
+                var coverArtBytes = coverArt[0].Data.Data;
+                Texture2D coverTexture = new Texture2D(2, 2);
+                coverTexture.LoadImage(coverArtBytes);
+
+                Rect rect = new Rect(0, 0, coverTexture.width, coverTexture.height);
+                Sprite coverSprite = Sprite.Create(coverTexture, rect, new Vector2(0.5f, 0.5f));
+                MusicImage.sprite = coverSprite;
+            }
+            else
+            {
+                print("loading default artcover");
+                MusicImage.sprite = DefaultSprite;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError("Failed to load cover art on Windows: " + ex.Message);
         }
     }
+#endif
 }

@@ -11,6 +11,7 @@ public class Server : NetworkBehaviour
     private Thread serverThread;
     public string hostedFilesPath;
     public string basePath = null; // Directory to serve files from
+    public string altPath = "https://localhost:8080/";
     private int port = 8080;
 
     void Start()
