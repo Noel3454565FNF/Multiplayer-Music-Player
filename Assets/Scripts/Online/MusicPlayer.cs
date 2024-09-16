@@ -28,6 +28,7 @@ public class MusicPlayer : NetworkBehaviour
     public Button Pause;
     public Image MusicImage;
     public Sprite DefaultSprite;
+    public Dropdown DDmusic;
 
     public string PlayerMode = "null";
 
@@ -77,7 +78,7 @@ public class MusicPlayer : NetworkBehaviour
             print("You are now in Client Mode");
             PlayerMode = "Client";
             canPause = false;
-            Pause.GetComponentInChildren<Text>().text = "balai dans ton cul";
+            Pause.GetComponentInChildren<Text>().text = "DISABLED";
             returnmypath();
         }
         
@@ -116,6 +117,10 @@ public class MusicPlayer : NetworkBehaviour
                 string[] files = Directory.GetFiles(selectedDirectory, "*.mp3");
                 mp3Files.Clear();
                 mp3Files.AddRange(files);
+                /*foreach string in mp3Files
+                {
+
+                }*/
 
                 Debug.Log($"Found {mp3Files.Count} MP3 files.");
 
@@ -169,11 +174,13 @@ public class MusicPlayer : NetworkBehaviour
         if (mp3AudioSource.isPlaying)
         {
             mp3AudioSource.Pause();
+            Pause.GetComponentInChildren<Text>().text = "Pause";
             TogglePauseClient(true);
         }
         else
         {
             mp3AudioSource.UnPause();
+            Pause.GetComponentInChildren<Text>().text = "Unpause";
             TogglePauseClient(false);
         }
     }
